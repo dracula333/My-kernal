@@ -1,4 +1,4 @@
-name: SouthWest Kernel 4.19.325 (STABLE FIXED)
+name: Lavender 4.19 KSU Next NetHunter PRO
 
 on:
   workflow_dispatch:
@@ -8,98 +8,106 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    # ---------------- DEPENDENCIES ----------------
-    - name: Install Dependencies
+    # ================= DEPENDENCIES =================
+    - name: Install deps
       run: |
         sudo apt update
         sudo apt install -y git curl wget zip bc bison flex build-essential \
         libssl-dev libelf-dev libncurses5-dev clang llvm lld python3 cpio
 
-    # ---------------- SOURCE ----------------
+    # ================= KERNEL =================
     - name: Clone Kernel Source
       run: |
-        git clone --depth=1 https://github.com/pix106/android_kernel_xiaomi_southwest-4.19.git kernel-source
+        git clone --depth=1 https://github.com/pix106/android_kernel_xiaomi_lavender-4.19.git kernel-source
 
-    # ---------------- CLANG ----------------
+    # ================= CLANG =================
     - name: Clone Clang
       run: |
         git clone --depth=1 https://github.com/ClangBuiltLinux/llvm-project clang
 
-    # ---------------- KERNELSU NEXT ----------------
+    # ================= KSU NEXT =================
     - name: Inject KernelSU Next
       run: |
         cd kernel-source
         curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -
 
-    # ---------------- BUILD FIX ENV ----------------
-    - name: Setup Build Environment
+    # ================= ENV =================
+    - name: Setup env
       run: |
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CC=clang
-        export KBUILD_CFLAGS="-march=armv8-a"
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        echo "SUBARCH=arm64" >> $GITHUB_ENV
 
-    # ---------------- CONFIG PATCH (SAFE ONLY) ----------------
-    - name: Apply NetHunter Config
+    # ================= DEFCONFIG =================
+    - name: Build defconfig
       run: |
         cd kernel-source
-        CONFIG=arch/arm64/configs/lavender_defconfig
+        export PATH=$PWD/../clang/bin:$PATH
 
-        # WiFi (monitor/injection capable drivers)
-        echo "CONFIG_CFG80211=y" >> $CONFIG
-        echo "CONFIG_MAC80211=y" >> $CONFIG
-        echo "CONFIG_ATH9K_HTC=m" >> $CONFIG
-        echo "CONFIG_ATH10K=m" >> $CONFIG
-        echo "CONFIG_RTL8187=m" >> $CONFIG
-        echo "CONFIG_RTL8XXXU=m" >> $CONFIG
+        make O=out ARCH=arm64 lavender_defconfig
 
-        # Bluetooth
-        echo "CONFIG_BT=y" >> $CONFIG
-        echo "CONFIG_BT_HCIBTUSB=m" >> $CONFIG
-        echo "CONFIG_BT_HCIUART=m" >> $CONFIG
+    # ================= REAL NETHUNTER PATCH =================
+    - name: Apply NetHunter FULL BASE
+      run: |
+        cd kernel-source
 
-        # USB HID
-        echo "CONFIG_USB_CONFIGFS=y" >> $CONFIG
-        echo "CONFIG_USB_CONFIGFS_F_HID=y" >> $CONFIG
-        echo "CONFIG_USB_F_HID=y" >> $CONFIG
+        cat <<EOF >> arch/arm64/configs/lavender_defconfig
 
-        # Android base
-        echo "CONFIG_ANDROID_BINDERFS=y" >> $CONFIG
-        echo "CONFIG_OVERLAY_FS=y" >> $CONFIG
+# ===== NetHunter Core =====
+CONFIG_CFG80211=y
+CONFIG_MAC80211=y
+CONFIG_WIRELESS=y
 
-        # KernelSU
-        echo "CONFIG_KSU=y" >> $CONFIG
+# ===== WiFi Injection Base =====
+CONFIG_ATH9K_HTC=m
+CONFIG_ATH10K=m
+CONFIG_RTL8187=m
+CONFIG_RTL8XXXU=m
 
-    # ---------------- BUILD ----------------
+# ===== Bluetooth =====
+CONFIG_BT=y
+CONFIG_BT_HCIBTUSB=m
+CONFIG_BT_HCIUART=m
+CONFIG_BT_HIDP=y
+
+# ===== USB HID Gadget (NetHunter HID) =====
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_F_HID=y
+CONFIG_USB_F_HID=y
+CONFIG_USB_G_HID=y
+
+# ===== Android Kernel features =====
+CONFIG_ANDROID_BINDERFS=y
+CONFIG_OVERLAY_FS=y
+CONFIG_DEVTMPFS=y
+
+# ===== Security / root helpers =====
+CONFIG_KSU=y
+EOF
+
+    # ================= BUILD =================
     - name: Build Kernel
       run: |
         cd kernel-source
         export PATH=$PWD/../clang/bin:$PATH
 
-        make O=out ARCH=arm64 CC=clang lavender_defconfig
+        make O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 -j$(nproc)
 
-        make -j$(nproc) O=out \
-        ARCH=arm64 \
-        CC=clang \
-        KBUILD_CFLAGS="-march=armv8-a"
-
-    # ---------------- ANYKERNEL ----------------
-    - name: Package Kernel
+    # ================= ANYKERNEL =================
+    - name: Package
       run: |
-        git clone https://github.com/osm0sis/AnyKernel3.git
+        git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git
         cd AnyKernel3
 
         cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb . 2>/dev/null || \
         cp ../kernel-source/out/arch/arm64/boot/Image .
 
-        zip -r9 SouthWest-Kernel-STABLE.zip *
+        zip -r9 Lavender-KSU-NH-PRO.zip *
 
-    # ---------------- UPLOAD ----------------
-    - name: Upload Artifact
+    # ================= UPLOAD =================
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: SouthWest-Kernel-STABLE
-        path: AnyKernel3/SouthWest-Kernel-STABLE.zip
+        name: Lavender-KSU-NH-PRO
+        path: AnyKernel3/Lavender-KSU-NH-PRO.zip
