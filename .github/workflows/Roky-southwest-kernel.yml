@@ -1,4 +1,4 @@
-name: SouthWest Kernel 4.19.325 NG (Full NetHunter + KSU Next)
+name: SouthWest Kernel 4.19.325 (STABLE FIXED)
 
 on:
   workflow_dispatch:
@@ -18,8 +18,8 @@ jobs:
         sudo apt install -y git curl wget zip bc bison flex build-essential \
         libssl-dev libelf-dev libncurses5-dev clang llvm lld python3 cpio
 
-    # ---------------- KERNEL SOURCE ----------------
-    - name: Clone SouthWest Kernel
+    # ---------------- SOURCE ----------------
+    - name: Clone Kernel Source
       run: |
         git clone --depth=1 https://github.com/pix106/android_kernel_xiaomi_southwest-4.19.git kernel-source
 
@@ -34,48 +34,43 @@ jobs:
         cd kernel-source
         curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -
 
-    # ---------------- KERNEL CONFIG PATCH ----------------
-    - name: Apply NetHunter + Bluetooth + WiFi + HID Config
+    # ---------------- BUILD FIX ENV ----------------
+    - name: Setup Build Environment
+      run: |
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CC=clang
+        export KBUILD_CFLAGS="-march=armv8-a"
+
+    # ---------------- CONFIG PATCH (SAFE ONLY) ----------------
+    - name: Apply NetHunter Config
       run: |
         cd kernel-source
         CONFIG=arch/arm64/configs/lavender_defconfig
 
-        # ---------------- WIFI ----------------
+        # WiFi (monitor/injection capable drivers)
         echo "CONFIG_CFG80211=y" >> $CONFIG
         echo "CONFIG_MAC80211=y" >> $CONFIG
-        echo "CONFIG_WIRELESS=y" >> $CONFIG
-
         echo "CONFIG_ATH9K_HTC=m" >> $CONFIG
-        echo "CONFIG_ATH9K_HW=m" >> $CONFIG
         echo "CONFIG_ATH10K=m" >> $CONFIG
         echo "CONFIG_RTL8187=m" >> $CONFIG
         echo "CONFIG_RTL8XXXU=m" >> $CONFIG
-        echo "CONFIG_RTL8192CU=m" >> $CONFIG
 
-        # ---------------- BLUETOOTH ----------------
+        # Bluetooth
         echo "CONFIG_BT=y" >> $CONFIG
-        echo "CONFIG_BT_HCIUART=m" >> $CONFIG
         echo "CONFIG_BT_HCIBTUSB=m" >> $CONFIG
-        echo "CONFIG_BT_BNEP=m" >> $CONFIG
-        echo "CONFIG_BT_RFCOMM=m" >> $CONFIG
-        echo "CONFIG_BT_HIDP=m" >> $CONFIG
+        echo "CONFIG_BT_HCIUART=m" >> $CONFIG
 
-        # ---------------- USB HID (NETHUNTER) ----------------
+        # USB HID
         echo "CONFIG_USB_CONFIGFS=y" >> $CONFIG
         echo "CONFIG_USB_CONFIGFS_F_HID=y" >> $CONFIG
         echo "CONFIG_USB_F_HID=y" >> $CONFIG
 
-        echo "CONFIG_HID=y" >> $CONFIG
-        echo "CONFIG_HID_GENERIC=y" >> $CONFIG
-        echo "CONFIG_HIDRAW=y" >> $CONFIG
-
-        # ---------------- ANDROID / DYNAMIC SAFE ----------------
+        # Android base
         echo "CONFIG_ANDROID_BINDERFS=y" >> $CONFIG
-        echo "CONFIG_DEVTMPFS=y" >> $CONFIG
-        echo "CONFIG_DEVTMPFS_MOUNT=y" >> $CONFIG
         echo "CONFIG_OVERLAY_FS=y" >> $CONFIG
 
-        # ---------------- KERNELSU ----------------
+        # KernelSU
         echo "CONFIG_KSU=y" >> $CONFIG
 
     # ---------------- BUILD ----------------
@@ -83,12 +78,13 @@ jobs:
       run: |
         cd kernel-source
         export PATH=$PWD/../clang/bin:$PATH
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CC=clang
 
-        make O=out lavender_defconfig
-        make -j$(nproc) O=out CC=clang
+        make O=out ARCH=arm64 CC=clang lavender_defconfig
+
+        make -j$(nproc) O=out \
+        ARCH=arm64 \
+        CC=clang \
+        KBUILD_CFLAGS="-march=armv8-a"
 
     # ---------------- ANYKERNEL ----------------
     - name: Package Kernel
@@ -99,11 +95,11 @@ jobs:
         cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb . 2>/dev/null || \
         cp ../kernel-source/out/arch/arm64/boot/Image .
 
-        zip -r9 SouthWest-Kali-NG-KernelSU.zip *
+        zip -r9 SouthWest-Kernel-STABLE.zip *
 
     # ---------------- UPLOAD ----------------
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: SouthWest-Kernel-FULL
-        path: AnyKernel3/SouthWest-Kali-NG-KernelSU.zip
+        name: SouthWest-Kernel-STABLE
+        path: AnyKernel3/SouthWest-Kernel-STABLE.zip
